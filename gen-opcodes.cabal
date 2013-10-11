@@ -1,0 +1,27 @@
+Name:           gen-opcodes
+Version:        0.0
+Cabal-Version:  >= 1.6
+License:        BSD3
+Author:         Anton Kholomiov
+Synopsis:       Generates opcodes for csound-expression
+Build-Type:     Simple
+
+Data-Files:     
+    resources/csound-expression-opcodes-dynamic.cabal  
+    resources/csound-expression-opcodes-typed.cabal  
+    resources/LICENSE
+    resources/Setup.hs
+    resources/MiscQuickref.html
+
+Executable gen-opcodes
+  Hs-Source-Dirs: src
+
+  Build-Depends:  base >= 4, base < 5, shelly, xml, containers, transformers, wl-pprint, split
+
+  Main-Is:        Main.hs
+
+  Other-Modules:
+        Types
+        Pretty
+        Parse
+    
