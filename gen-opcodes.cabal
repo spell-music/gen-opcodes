@@ -6,6 +6,10 @@ Author:         Anton Kholomiov
 Synopsis:       Generates opcodes for csound-expression
 Build-Type:     Simple
 
+Description:
+    Makes an executable program @gen-opcodes@ that generates 
+    packages for dynamic and typed opcodes in the current directory.
+
 Data-Files:     
     resources/csound-expression-opcodes-dynamic.cabal  
     resources/csound-expression-opcodes-typed.cabal  
