@@ -53,7 +53,7 @@ data OpcDoc = OpcDoc
 data Rate = Xr | Ar | Kr | Ir | Sr | Fr | Wr | Tvar 
     deriving (Show, Eq)
 
-data Type = Sig | D | Tab | Str | Spec | Wspec | TvarType | Msg | TypeList Type
+data Type = Sig | D | Tab | Str | Spec | Wspec | TvarType | Msg | TypeList Type | SigOrD
     deriving (Show, Eq)
 
 data OpcType 

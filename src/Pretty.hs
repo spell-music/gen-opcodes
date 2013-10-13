@@ -128,7 +128,7 @@ opcTypedSignature = pretty . types . opcSignature
 opcTypedBody :: Opc -> Doc
 opcTypedBody a 
     | isConstant a  = hsep [cons, text "$ const", name]
-    | otherwise     = addMultiArgs $ hsep [cons, name]
+    | otherwise     = addArgs $ hsep [cons, name]
     where 
         name = text $ qualifiedHsOpcName a
         cons = onMulti $ text $ firstLower $ show $ opcType a
@@ -137,16 +137,34 @@ opcTypedBody a
             DirtyMulti  -> text "fromDm $" <+> x
             _           -> x
 
-        addMultiArgs = case opcType a of
-            PureMulti   -> addArgs
-            DirtyMulti  -> addArgs
-            _           -> id
+        -- assumption: one of the addSigOrDArgs or addMultiArgs
+        -- is always identity function. 
+        addArgs = addSigOrDArgs . addMultiArgs
 
-        addArgs = case inTypes $ types $ opcSignature a of
-            InTypes xs | length xs == 0 -> id
-            InTypes xs                  -> 
-                let args = hsep $ fmap ((char 'a' <> ) . int) [1 .. length xs]
-                in  \x -> hsep [char '\\', args, text "->", x, args]
+        addSigOrDArgs = case outTypes $ types $ opcSignature a of
+            SingleOut SigOrD        -> args "fromGE $"
+            SE (SingleOut SigOrD)   -> args "fmap fromGE $"
+            _                       -> id
+            where
+                args fun body = case inTypes $ types $ opcSignature a of
+                    InTypes xs | length xs == 0 -> text fun <+> body
+                    InTypes xs                  -> 
+                        let args = fmap ((char 'a' <> ) . int) [1 .. length xs]
+                        in  hsep [char '\\' <> hsep args, text "->", text fun, body, hsep $ zipWith convertSigOrDs xs args]
+                convertSigOrDs ty arg = case ty of
+                    SigOrD  -> parens $ text "toGE" <+> arg
+                    _       -> arg                                         
+
+        addMultiArgs = case opcType a of
+            PureMulti   -> args
+            DirtyMulti  -> args
+            _           -> id
+            where                
+                args = case inTypes $ types $ opcSignature a of
+                    InTypes xs | length xs == 0 -> id
+                    InTypes xs                  -> 
+                        let args = hsep $ fmap ((char 'a' <> ) . int) [1 .. length xs]
+                        in  \x -> hsep [char '\\' <> args, text "->", x, args]
 
 
 ---------------------------------------------------------------------------------------
@@ -186,6 +204,8 @@ instance Pretty Types where
             pConstr x = case x of
                 OutTuple    -> text "Tuple a =>"
                 Tuple       -> text "Tuple a =>"
+                -- assumption: SigOrD can be only in Single or SE output
+                SingleOut SigOrD -> text $ "SigOrD " ++ nameSigOrD ++ " =>"
                 SE a        -> pConstr a
                 _           -> empty
 
@@ -212,8 +232,11 @@ instance Pretty Rate where
 
 instance Pretty Type where
     pretty x = case x of
-        TypeList a  -> pretty [a]
+        TypeList a  -> pretty [a]        
+        SigOrD      -> text nameSigOrD
         _           -> text $ show x
+
+nameSigOrD = "a"
 
 -----------------------------------------------------------
 

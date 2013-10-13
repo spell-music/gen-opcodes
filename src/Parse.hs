@@ -409,6 +409,13 @@ hint = flip M.lookup tab
             , "OSClisten" # opc1e [D, D, D, TypeList Sig] Sig
             , "OSCsend" # opc0 [Sig, D, D, D, D, TypeList Sig]
             , "dssiaudio" # opcs [D, TypeList Sig]
+            -- SigOrD cases
+            , by (opc1 [SigOrD, Tab] SigOrD) ["table", "tablei", "table3"]
+            , by rnd0 ["urandom"]
+            , by rnd1 ["bexprnd", "cauchy", "duserrnd", "exprand", "linrand", "pcauchy", "poisson", "trirand", "unirand"]
+            , by rnd2 ["random", "rnd31", "weibull"]
+            , by rnd3 ["betarand", "cauchyi", "cuserrnd", "exprandi", "gaussi"]
+
             ]
             
         str # x = by x [str]
@@ -447,6 +454,11 @@ hint = flip M.lookup tab
         multitap = opc1 [Sig, TypeList D] Sig
         vbapNmove = opcs [Sig, D, D, D, TypeList D]
         maxMin = opc1 [TypeList Sig] Sig
+
+        rnd0 = opc1e [] SigOrD
+        rnd1 = opc1e [SigOrD] SigOrD
+        rnd2 = opc1e [SigOrD, SigOrD] SigOrD
+        rnd3 = opc1e [SigOrD, SigOrD, SigOrD] SigOrD
 
 appendMidiMsg :: String -> InTypes -> InTypes
 appendMidiMsg name (InTypes xs)
