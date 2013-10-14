@@ -16,16 +16,40 @@ Data-Files:
     resources/LICENSE
     resources/Setup.hs
     resources/MiscQuickref.html
+    resources/docs.txt
+  
+Library 
+  Hs-Source-Dirs: src
+
+  Build-Depends:  base >= 4, base < 5, shelly, xml, containers, transformers, wl-pprint, split, http-conduit
+
+  Exposed-modules:
+        Csound.Gen.Types
+        Csound.Gen.Pretty
+        Csound.Gen.Parse
 
 Executable gen-opcodes
   Hs-Source-Dirs: src
 
-  Build-Depends:  base >= 4, base < 5, shelly, xml, containers, transformers, wl-pprint, split
+  Build-Depends:  base >= 4, base < 5, shelly, xml, containers, transformers, wl-pprint, split, lifted-base
 
   Main-Is:        Main.hs
 
-  Other-Modules:
-        Types
-        Pretty
-        Parse
-    
+Executable gen-opcodes-unparsed
+  Hs-Source-Dirs: src
+
+  Build-Depends:  base >= 4, base < 5, shelly, xml, containers, transformers, wl-pprint, split
+
+  Main-Is:        Unparsed.hs
+
+  Ghc-Options:    -main-is Unparsed 
+
+Executable gen-opcodes-prepare-docs
+  Hs-Source-Dirs: src
+
+  Build-Depends:  base >= 4, base < 5, shelly, xml, containers, transformers, wl-pprint, split
+
+  Main-Is:        Prepare.hs
+
+  Ghc-options:   -main-is Prepare
+

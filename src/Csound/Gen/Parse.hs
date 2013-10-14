@@ -1,4 +1,7 @@
-module Parse(parse, Unparsed) where
+{-# Language ScopedTypeVariables #-}
+module Csound.Gen.Parse(
+    parse, parseBy, DocTab, Unparsed, downloadDesc
+) where
 
 import Control.Applicative
 import Control.Monad.Trans.Writer
@@ -16,13 +19,19 @@ import qualified Data.Map as M
 
 import Data.List.Split
 import Text.XML.Light hiding (Node)
+import Network.HTTP.Conduit
+import Control.Exception.Lifted(catch)
 
-import Types
+import Csound.Gen.Types
 
 type Unparsed = (String, String, String)
+type DocTab = M.Map String (String, String)
 
 parse :: String -> ([Chap], [Unparsed])
-parse = first toChap . parseOpcLines . getSecs . getContent
+parse = parseBy M.empty
+
+parseBy :: DocTab -> String -> ([Chap], [Unparsed])
+parseBy docTab = first toChap . parseOpcLines docTab . getSecs . getContent
 
 -------------------------------------------------------------------------
 -- parsing fsm
@@ -71,8 +80,8 @@ blackList = fmap splitTitle $
 -------------------------------------------------------------------------
 -- groups
 
-parseOpcLines :: [Node OpcLine] -> ([Node Opc], [Unparsed])
-parseOpcLines = runWriter . mapM (\x -> fmap (Node (nodeName x)) $ uncurry toOpc (splitTitle $ nodeName x) (nodeItems x)) 
+parseOpcLines :: DocTab -> [Node OpcLine] -> ([Node Opc], [Unparsed])
+parseOpcLines docTab = runWriter . mapM (\x -> fmap (Node (nodeName x)) $ uncurry (toOpc docTab) (splitTitle $ nodeName x) (nodeItems x)) 
     
 toChap :: [Node Opc] -> [Chap]
 toChap = fmap toNode . groupBy eqChapName
@@ -82,16 +91,16 @@ toChap = fmap toNode . groupBy eqChapName
         toSec (Node sec opcs) = Node (snd $ splitTitle sec) opcs
         chapName = fst . splitTitle . nodeName
 
-toOpc :: String -> String -> [OpcLine] -> Writer [Unparsed] [Opc]
-toOpc chapName secName = fmap catMaybes . mapM (fromOpcLines chapName secName) . groupBy ((==) `on` opcLineName)
+toOpc :: DocTab -> String -> String -> [OpcLine] -> Writer [Unparsed] [Opc]
+toOpc docTab chapName secName = fmap catMaybes . mapM (fromOpcLines docTab chapName secName) . groupBy ((==) `on` opcLineName)
 
-fromOpcLines :: String -> String -> [OpcLine] -> Writer [Unparsed] (Maybe Opc)
-fromOpcLines chapName secName as = case (getRates echo as, hint echo <|> getTypes) of
+fromOpcLines :: DocTab -> String -> String -> [OpcLine] -> Writer [Unparsed] (Maybe Opc)
+fromOpcLines docTab chapName secName as = case (rateHint echo <|> getRates echo as, typeHint echo <|> getTypes) of
     (Just rs, Just ts)  -> return $ Just $ Opc name (Signature rs ts) doc
     _                   -> tell unparsed >> return Nothing
     where
         name = opcLineName $ head as
-        doc = OpcDoc (getDescription name) (fmap toDocCode as) (opcLineLink $ head as)
+        doc = OpcDoc getShortDescription getLongDescription (fmap toDocCode as) (opcLineLink $ head as)
             where toDocCode x = concat $ intersperse " " $ [opcLineOuts x, opcLineName x, opcLineIns x]
 
         getTypes = liftA2 Types (getInTypes echo $ head as) (getOutTypes chapName secName echo $ head $ reverse $ sortBy (comparing $ length . splitRates . opcLineOuts) as)
@@ -100,8 +109,10 @@ fromOpcLines chapName secName as = case (getRates echo as, hint echo <|> getType
 
         echo = opcLineName $ head as
 
-getDescription :: String -> String
-getDescription = const ""
+        getShortDescription = fst $ getDescription
+        getLongDescription  = snd $ getDescription
+
+        getDescription = maybe ("", "") id $ M.lookup name docTab 
 
 -------------------------------------------------------------------------
 -- opc
@@ -142,7 +153,7 @@ parseParts xs = case xs of
     where 
         opcLine a ins outs = OpcLine (getName a) ins outs (getLink a)
         getName a = trim $ strContent a
-        getLink a = fromJust $ findAttrBy ((== "href") . qName) a
+        getLink a = maybe (error "getLink") id $ findAttrBy ((== "href") . qName) a
     
 -------------------------------------------------------------------------
 -- rates
@@ -164,7 +175,7 @@ fromRateLists rs
     where 
         isSingleOutput = all (isSingleRateList . fst) rs  
         isProcedure = all (isEmptyRateList . fst) rs
-        getSingleOutput = fromJust . getSingleRateList 
+        getSingleOutput = maybe (error "getSingleOutput") id . getSingleRateList 
 
 getRateLists :: String -> [(String, String)] -> Maybe [(RateList, RateList)]
 getRateLists anOpcName = debug . mapM phi 
@@ -319,7 +330,7 @@ splitTitle x = (filter isAlphaNum a, filter (/= '\160') $ drop 1 b)
 -- content
 
 getContent :: String -> [Element]
-getContent = tail . elChildren . ( !! 1) . elChildren . fromJust . filterElement (elIs "body") . fromJust . parseXMLDoc 
+getContent = tail . elChildren . ( !! 1) . elChildren . maybe (error "getContent1") id . filterElement (elIs "body") . maybe (error "getContent2") id . parseXMLDoc 
 
 --------------------------------------------------------------------
 -- pure / dirty
@@ -357,12 +368,38 @@ trim :: String -> String
 trim = reverse . dropWhile isSpace . reverse . dropWhile isSpace
 
 ----------------------------------------------------------------------
+-- hints
+
+-- rates
+
+rateHint :: String -> Maybe Rates
+rateHint = flip M.lookup rateTab
+
+rateTab = M.fromList $ concat 
+    [ opr1 [ "ampdb", "ampdbfs", "cent", "cpsoct", "octave", "semitone"]
+    , opr1k 
+        [ "dbamp", "dbfsamp", "birnd", "rnd", "cpsmidinn"
+        , "cpspch", "octcps", "octmidinn", "octpch"
+        , "pchmidinn", "pchoct"]
+    , infOpr []
+    , return $ ("urd", SingleOpr [(Ar, JustList [Kr]), (Kr, JustList [Kr]), (Ir, JustList [Ir])])
+    , return $ ("taninv2", Single [(Ar, JustList [Ar, Ar]), (Kr, JustList [Kr, Kr]), (Ir, JustList [Ir, Ir])])
+    , return $ ("divz", Single [(Ar, JustList [Xr, Xr]), (Kr, JustList [Kr, Kr]), (Ir, JustList [Ir, Ir])])
+    ]
+    where     
+
+        opr tag names = fmap (\x -> (x, tag)) names
+
+        opr1 = opr Opr1
+        opr1k = opr Opr1k
+        infOpr = opr InfOpr
+
 -- types
 
-hint :: String -> Maybe Types
-hint = flip M.lookup tab
-    where
-        tab = M.fromList $ concat 
+typeHint :: String -> Maybe Types
+typeHint = flip M.lookup typeTab
+
+typeTab = M.fromList $ concat 
             [ by osc ["oscil", "oscili", "oscil3", "poscil", "poscil3"]
             , by seg  segNames
             , by segr segrNames
@@ -412,12 +449,22 @@ hint = flip M.lookup tab
             -- SigOrD cases
             , by (opc1 [SigOrD, Tab] SigOrD) ["table", "tablei", "table3"]
             , by rnd0 ["urandom"]
-            , by rnd1 ["bexprnd", "cauchy", "duserrnd", "exprand", "linrand", "pcauchy", "poisson", "trirand", "unirand"]
+            , by rnd1 ["bexprnd", "cauchy", "duserrnd", "exprand", "linrand", "pcauchy", "poisson", "trirand", "unirand", "urd"]
             , by rnd2 ["random", "rnd31", "weibull"]
             , by rnd3 ["betarand", "cauchyi", "cuserrnd", "exprandi", "gaussi"]
 
-            ]
+            -- funs with arity 2
+            , by (opc1 [SigOrD, SigOrD] SigOrD) ["taninv2", "divz"]
             
+            -- simple funs
+            , by fun1 
+                [ "ampdb", "ampdbfs", "cent", "cpsoct"
+                , "octave", "semitone", "dbamp"
+                , "dbfsamp", "birnd", "rnd", "cpsmidinn"
+                , "cpspch", "octcps", "octmidinn"
+                , "octpch", "pchmidinn", "pchoct"]
+            ]
+    where            
         str # x = by x [str]
         by a xs = fmap (\x -> (x, a)) xs
 
@@ -433,7 +480,7 @@ hint = flip M.lookup tab
         loopseg2 = opc1 [Sig, Sig, TypeList Sig] Sig
         loopseg3 = opc1 [Sig, Sig, D, TypeList Sig] Sig
 
-        segNames = ["linseg", "expseg", "cosseg", "cossegb", "transeg", "transegb"]
+        segNames = ["linseg", "linsegb", "expseg", "expsega", "expsegb", "cosseg", "cossegb", "transeg", "transegb"]
         segrNames = fmap (++ "r") segNames
 
         fin x = opc0 [Str, D, D, TypeList x]
@@ -460,6 +507,8 @@ hint = flip M.lookup tab
         rnd2 = opc1e [SigOrD, SigOrD] SigOrD
         rnd3 = opc1e [SigOrD, SigOrD, SigOrD] SigOrD
 
+        fun1 = opc1 [SigOrD] SigOrD
+
 appendMidiMsg :: String -> InTypes -> InTypes
 appendMidiMsg name (InTypes xs)
     | name `elem` midiFuns =  InTypes (Msg : xs)
@@ -469,4 +518,47 @@ midiFuns =
     [ "ampmidi", "ampmidid", "cpsmidi"
     , "cpsmidib", "cpstmid", "octmidi", "octmidib"
     , "pchmidi", "pchmidib"]
+
+----------------------------------------------------------
+-- download description
+
+downloadDesc :: Opc -> IO (String, String)
+downloadDesc opc = fmap (maybe ("", "") id . fmap getDesc) . simpleHttp' . fullPath . opcDocLink . opcDoc $ opc
+    where 
+        fullPath x = "http://www.csounds.com/manual/html/" ++ x
+
+        getDesc x = 
+            ( trim $ dropOnLongHyphen $ orEmpty (getShortDesc =<< doc)
+            , trim $ orEmpty (getLongDesc =<< doc))
+            where doc = parseXMLDoc x
+
+        orEmpty = maybe "" id
+
+        getShortDesc = fmap getText . (filterElement (elIs "p") =<<) . filterElement elemShortDesc
+
+        getLongDesc = fmap getText . (filterElement (elIs "p") =<<) . filterElement elemLongDesc
+                    
+        elemShortDesc = titleIs linkName
+        elemLongDesc  = titleIs "Description"
+
+        linkName = takeWhile (/= '.') $ opcDocLink $ opcDoc opc
+
+        titleIs name = (== Just name) . lookupAttrBy ((== "title") . qName) . elAttribs
+
+        getText :: Element -> String
+        getText elem = concat $ fmap go $ elContent elem
+            where 
+                go x = case x of
+                    Elem a -> getText a
+                    Text cd -> cdData cd
+                    CRef str -> ""
+
+        dropOnLongHyphen xs = case splitOn "\226\128\148" xs of
+            [a] -> a
+            _:as -> concat as
+        
+        simpleHttp' x = catch (fmap Just $ simpleHttp x) $ \(e::HttpException) -> case e of
+            _ -> do
+                print $ "no page for: " ++ x
+                return Nothing
 

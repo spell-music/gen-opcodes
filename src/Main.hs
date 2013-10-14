@@ -1,13 +1,16 @@
 {-# Language OverloadedStrings #-}
 module Main where
 
+import Control.Applicative
+
 import qualified Data.Tree as T
+import qualified Data.Map  as M
 import Data.String
 import Shelly
 
-import Types
-import Parse
-import Pretty
+import Csound.Gen.Types
+import Csound.Gen.Parse
+import Csound.Gen.Pretty
 
 import Paths_gen_opcodes
 
@@ -41,7 +44,13 @@ mainBy packageType = do
     saveSetupFile packageType
 
 parsed :: IO ([Chap], [Unparsed])
-parsed = fmap parse . readFile =<< getDataFileName "resources/MiscQuickref.html" 
+parsed = parseBy
+    <$> (fmap getDocTab $ readFile =<< getDataFileName "resources/docs.txt")
+    <*> (readFile =<< getDataFileName "resources/MiscQuickref.html")
+    where
+        getDocTab :: String -> DocTab
+        getDocTab = M.fromList . read
+    
 
 saveFile :: PackageType -> String -> String -> IO ()
 saveFile packageType fileName fileText = writeFile (fullPath packageType fileName) fileText

@@ -1,13 +1,15 @@
-module Pretty(
+module Csound.Gen.Pretty(
     prettyModules, mainModule
 ) where
+
+import qualified Data.Map as M
 
 import Data.List
 import Data.Char
 
 import Text.PrettyPrint.Leijen
 
-import Types
+import Csound.Gen.Types
 
 mainModule :: PackageType -> [Chap] -> String
 mainModule packageType chaps = pp $ vCat 
@@ -97,7 +99,10 @@ opcDynamicSignature a = ins <+> outs
             Procedure       -> "Dep ()"
 
 opcDynamicBody :: Opc -> Doc
-opcDynamicBody a = hsep [cons, name, signature, mConst]
+opcDynamicBody a = case verbatimBody (opcName a) of
+    Just res -> res
+    Nothing  | isOpcode  -> hsep [cons, name, signature, mConst]
+    Nothing              -> ppOpr 
     where
         cons = text $ case opcType a of
             PureSingle      -> "opcs"
@@ -114,6 +119,21 @@ opcDynamicBody a = hsep [cons, name, signature, mConst]
             | isConstant a  = text "$ []"
             | otherwise     = empty
 
+        isOpcode = case rates $ opcSignature a of
+            Single _   -> True
+            Multi  _ _ -> True
+            _          -> False
+
+        ppOpr = case rates $ opcSignature a of
+            Opr1    -> text $ "\\xs -> opr1 \""  ++ opcName a ++ "\" (head xs)"
+            Opr1k   -> text $ "\\xs -> opr1k \"" ++ opcName a ++ "\" (head xs)"
+            InfOpr  -> text $ "\\xs -> infOpr \""  ++ opcName a ++ "\" (head xs) (head $ tail xs)"
+
+        verbatimBody :: String -> Maybe Doc
+        verbatimBody x = case x of
+            "urd"   -> Just $ text $ "dep . oprBy \"urd\" [(Ar,[Kr]), (Kr,[Kr]), (Ir,[Ir])]"
+            _       -> Nothing
+
 ---------------------------------------------------------------------------------------
 -- pretty typed opcode
 
@@ -126,9 +146,10 @@ opcTypedSignature :: Opc -> Doc
 opcTypedSignature = pretty . types . opcSignature
 
 opcTypedBody :: Opc -> Doc
-opcTypedBody a 
-    | isConstant a  = hsep [cons, text "$ const", name]
-    | otherwise     = addArgs $ hsep [cons, name]
+opcTypedBody a = case verbatimBody $ opcName a of
+    Just res -> res
+    Nothing | isConstant a -> hsep [cons, text "$ const", name]
+    _ -> addArgs $ hsep [cons, name]
     where 
         name = text $ qualifiedHsOpcName a
         cons = onMulti $ text $ firstLower $ show $ opcType a
@@ -166,14 +187,43 @@ opcTypedBody a
                         let args = hsep $ fmap ((char 'a' <> ) . int) [1 .. length xs]
                         in  \x -> hsep [char '\\' <> args, text "->", x, args]
 
+        verbatimBody = flip M.lookup verbatimTab
+
+        verbatimTab = fmap text $ M.fromList $ concat 
+            [ by seg 
+                    ["linseg", "linsegb", "expseg"
+                    , "expsega"
+                    , "expsegb", "cosseg", "cossegb"
+                    , "linsegr", "expsegr", "cossegr"]
+            , by seg2
+                    ["transeg", "transegb", "transegr"]
+            ]
+            where 
+                by f xs = zip xs (fmap f xs)
+
+                seg x = "pureSingle D." ++ x ++ " . (\\xs -> xs ++ [1, last xs])"
+                seg2 x = "pureSingle D." ++ x ++ " . (\\xs -> xs ++ [1, 0, last xs])"
+                
+
 
 ---------------------------------------------------------------------------------------
 -- pretty primitives
 
 instance Pretty OpcDoc where
-    pretty a = vcat $ intersperse (text "--") [desc, signature, link] 
+    pretty a =  vcat $ text "-- | " : intersperse (text "--") [desc, signature, link] 
         where
-            desc = text "-- |" <+> text (opcDocDescription a)
+            formDesc f = vcat $ fmap ((text "--" <+>) . text) $ lines $ renderDoc 70 $ text $ f a
+
+            renderDoc n doc = displayS (renderPretty 0.2 n doc) ""
+
+            desc
+                | shortAndLongAreEqual  = shortDesc
+                | otherwise             = vcat [shortDesc, text "--", longDesc]
+
+            shortAndLongAreEqual = opcDocShortDescription a == opcDocLongDescription a
+
+            shortDesc   = formDesc opcDocShortDescription
+            longDesc    = formDesc opcDocLongDescription
 
             signature = vcat $ fmap ((text "-- >" <+>) . text) $  nestTail . lines =<< opcDocCode a
                 where                
@@ -191,6 +241,8 @@ instance Pretty Rates where
     pretty x = case x of
         Single rs -> pretty rs
         Multi a b -> pretty (a, b)
+        SingleOpr rs -> pretty rs
+        _ -> empty
 
 instance Pretty RateList where
     pretty x = case x of

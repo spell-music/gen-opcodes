@@ -1,4 +1,4 @@
-module Types where
+module Csound.Gen.Types where
 
 import Data.Char
 import Data.Maybe
@@ -25,7 +25,10 @@ data Signature = Signature
     , types         :: Types 
     } deriving (Show)
 
-data Rates = Single [(Rate, RateList)] | Multi RateList RateList
+data Rates 
+    = Single [(Rate, RateList)] | Multi RateList RateList
+    | Opr1 | Opr1k | InfOpr 
+    | SingleOpr [(Rate, RateList)]
     deriving (Show)
 
 data RateList = JustList [Rate] | Repeat Rate | Append RateList RateList
@@ -45,9 +48,10 @@ data OutTypes
     deriving (Show)
 
 data OpcDoc = OpcDoc
-    { opcDocDescription     :: String
-    , opcDocCode            :: [String]
-    , opcDocLink            :: String
+    { opcDocShortDescription    :: String
+    , opcDocLongDescription     :: String
+    , opcDocCode                :: [String]
+    , opcDocLink                :: String
     } deriving (Show)
 
 data Rate = Xr | Ar | Kr | Ir | Sr | Fr | Wr | Tvar 
@@ -67,6 +71,7 @@ isConstant = isConst . rates . opcSignature
         isConst x = case x of
             Single rs   -> all (isNull . snd) rs
             Multi _ ins -> isNull ins
+            _           -> False
 
         isNull x = case x of
             JustList []     -> True
@@ -124,4 +129,8 @@ firstLower, firstUpper :: String -> String
 firstUpper x = toUpper (head x) : tail x
 firstLower x = toLower (head x) : tail x
 
+
+allOpcs :: Chap -> [Opc]
+allOpcs = (nodeItems =<< ) . nodeItems
+    
 
