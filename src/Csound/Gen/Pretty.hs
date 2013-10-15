@@ -193,17 +193,21 @@ opcTypedBody a = case verbatimBody $ opcName a of
             [ by seg 
                     ["linseg", "linsegb", "expseg"
                     , "expsega"
-                    , "expsegb", "cosseg", "cossegb"
-                    , "linsegr", "expsegr", "cossegr"]
+                    , "expsegb", "cosseg", "cossegb" ]
+            , by segr  ["linsegr", "expsegr", "cossegr"]
             , by seg2
-                    ["transeg", "transegb", "transegr"]
+                    ["transeg", "transegb"]
+            , by seg2r ["transegr"]
             ]
             where 
                 by f xs = zip xs (fmap f xs)
 
-                seg x = "pureSingle D." ++ x ++ " . (\\xs -> xs ++ [1, last xs])"
-                seg2 x = "pureSingle D." ++ x ++ " . (\\xs -> xs ++ [1, 0, last xs])"
+                seg x = "kr . pureSingle D." ++ x ++ " . (\\xs -> xs ++ [1, last xs])"
+                seg2 x = "kr . pureSingle D." ++ x ++ " . (\\xs -> xs ++ [1, 0, last xs])"
                 
+                segr x = "\\xs dt rx -> kr $ pureSingle D." ++ x ++ " (xs ++ [1, last xs]) dt rx"
+                seg2r x = "\\xs dt rx -> kr $ pureSingle D." ++ x ++ " (xs ++ [1, 0, last xs]) dt rx"
+
 
 
 ---------------------------------------------------------------------------------------
