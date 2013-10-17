@@ -517,7 +517,7 @@ appendMidiMsg name (InTypes xs)
 midiFuns = 
     [ "ampmidi", "ampmidid", "cpsmidi"
     , "cpsmidib", "cpstmid", "octmidi", "octmidib"
-    , "pchmidi", "pchmidib"]
+    , "pchmidi", "pchmidib", "notnum", "pchbend"]
 
 ----------------------------------------------------------
 -- download description
