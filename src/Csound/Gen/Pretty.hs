@@ -85,7 +85,7 @@ prettyOpcDynamic a = vcat
 
 
 opcDynamicSignature :: Opc -> Doc
-opcDynamicSignature a = ins <+> outs
+opcDynamicSignature a = context <+> ins <+> outs
     where
         ins 
             | isConstant a  = empty
@@ -93,10 +93,14 @@ opcDynamicSignature a = ins <+> outs
     
         outs = text $ case opcType a of
             PureSingle      -> "E"
-            DirtySingle     -> "Dep E"
+            DirtySingle     -> "DepT m E"
             PureMulti       -> "MultiOut [E]"
-            DirtyMulti      -> "MultiOut (Dep [E])"
-            Procedure       -> "Dep ()"
+            DirtyMulti      -> "MultiOut (DepT m [E])"
+            Procedure       -> "DepT m ()"
+
+        context 
+            | isPure (opcType a)    = empty
+            | otherwise             = text "Monad m =>"
 
 opcDynamicBody :: Opc -> Doc
 opcDynamicBody a = case verbatimBody (opcName a) of
@@ -106,10 +110,10 @@ opcDynamicBody a = case verbatimBody (opcName a) of
     where
         cons = text $ case opcType a of
             PureSingle      -> "opcs"
-            DirtySingle     -> "dep . opcs"
+            DirtySingle     -> "depT . opcs"
             PureMulti       -> "mopcs"
-            DirtyMulti      -> "mdep . mopcs"
-            Procedure       -> "dep_ . opcs"
+            DirtyMulti      -> "mdepT . mopcs"
+            Procedure       -> "depT_ . opcs"
         
         name = dquotes $ text $ opcName a    
 
@@ -131,7 +135,7 @@ opcDynamicBody a = case verbatimBody (opcName a) of
 
         verbatimBody :: String -> Maybe Doc
         verbatimBody x = case x of
-            "urd"   -> Just $ text $ "dep . oprBy \"urd\" [(Ar,[Kr]), (Kr,[Kr]), (Ir,[Ir])]"
+            "urd"   -> Just $ text $ "depT . oprBy \"urd\" [(Ar,[Kr]), (Kr,[Kr]), (Ir,[Ir])]"
             _       -> Nothing
 
 ---------------------------------------------------------------------------------------

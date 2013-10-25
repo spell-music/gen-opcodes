@@ -112,6 +112,16 @@ longerRateList x y = case (x, y) of
     (_         , JustList _) -> GT
     _                        -> EQ
 
+isDirty :: OpcType -> Bool
+isDirty x = case x of
+    DirtySingle -> True
+    Procedure   -> True
+    DirtyMulti  -> True
+    _           -> False
+    
+isPure :: OpcType -> Bool
+isPure = not . isDirty
+
 packageName packageType = "csound-expression-opcodes-" ++ firstLower (show packageType)
 
 cabalFileName packageType = packageName packageType ++ ".cabal"
