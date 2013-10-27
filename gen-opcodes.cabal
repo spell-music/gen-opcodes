@@ -12,7 +12,7 @@ Description:
 
 Data-Files:     
     resources/csound-expression-opcodes-dynamic.cabal  
-    resources/csound-expression-opcodes-typed.cabal  
+    resources/csound-expression-opcodes.cabal  
     resources/LICENSE
     resources/Setup.hs
     resources/MiscQuickref.html

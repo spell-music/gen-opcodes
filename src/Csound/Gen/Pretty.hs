@@ -35,14 +35,18 @@ type RenderOpc = Opc -> Doc
 renderOpc :: PackageType -> RenderOpc
 renderOpc x = case x of
     Dynamic -> prettyOpcDynamic
-    Typed   -> prettyOpcTyped
+    Typed   -> pretty
 
 data Import = SimpleImport String | QualifiedImport String String
 
 imports :: PackageType -> [Import]
 imports x = case x of
     Dynamic  -> [SimpleImport "Csound.Dynamic"]
-    Typed    -> [QualifiedImport "Csound.Dynamic.Opcode" anAlias, SimpleImport "Csound.Typed"]
+    Typed    -> 
+        [ SimpleImport "Control.Applicative"
+        , SimpleImport "Control.Monad.Trans.Class"
+        , SimpleImport "Csound.Dynamic"
+        , SimpleImport "Csound.Typed" ]
 
 anAlias :: String
 anAlias = "D"
@@ -76,6 +80,186 @@ pSec renderOpc chapName a = vCat
     , vCat $ fmap renderOpc $ nodeItems a ]
 
 ---------------------------------------------------------------------------------------
+-- 
+
+instance Pretty Opc where
+    pretty a = vcat 
+        [ pretty $ opcDoc a
+        , hsep [text (hsOpcName a), text "::",  opcTypedSignature a]
+        , prettyTyCons a 
+        , hsep [ text "    where", prettyDynCons a ]]
+
+---------------------------------------------------------------------------------------
+-- pretty typed constructor
+
+prettyTyCons :: Opc -> Doc
+prettyTyCons a = hsep [name, args, char '=', cons, maybeReturn, text "f", consArgs]
+    where
+        name = text $ hsOpcName a
+
+        maybeReturn 
+            | isConst   = text "$ return $"
+            | otherwise = text "$"
+
+        cons = case outTypes $ types $ opcSignature a of
+            SingleOut SigOrD    -> text "fromGE"
+            SE (SingleOut SigOrD) -> dirtySingle "fromGE"
+            
+            SingleOut ty        -> text $ show ty
+            SE (SingleOut ty)   -> dirtySingle $ show ty
+
+            OutNone             -> proc
+            SE OutNone          -> proc
+
+            Tuple               -> tup
+            SE Tuple            -> seTup
+            TheTuple _          -> tup
+            SE (TheTuple _)     -> seTup
+
+            OutTuple            -> tup
+            SE OutTuple         -> seTup
+
+            err                 -> error $ "no pretty for: " ++ show err
+
+        dirtySingle x = hsep [text "fmap (", text x, text ". return) $ SE $ (depT =<<) $ lift"]
+        proc = text "SE $ (depT_ =<<) $ lift"
+        tup = text "pureTuple"
+        seTup = text "dirtyTuple"
+
+        args = onMidiArg $ hsep as
+
+        consArgs 
+            | isConst   = empty
+            | otherwise = (text "<$>" <+>) 
+                $ hsep $ intersperse (text "<*>") $ zipWith mkUn as ins
+
+        isConst = insArity == 0
+
+        as   = fmap ((char 'b' <>) . int) [1 .. insArity]
+        insArity = length ins
+        ins  = skipMsg $ case inTypes $ types $ opcSignature a of
+            InTypes xs -> xs        
+
+        isListArg x = case x of
+            TypeList _  -> True
+            _           -> False
+
+        skipMsg xs = case xs of
+            Msg : ys -> ys
+            _        -> xs
+
+        onMidiArg x
+            | isMsg     = char '_' <+> x
+            | otherwise = x
+
+        isMsg = case inTypes $ types $ opcSignature a of
+            InTypes (Msg:_) -> True
+            _               -> False
+
+        mkUn arg x = case x of
+            TypeList y  -> hsep [text "mapM", (text $ getUn y), arg]
+            _           -> text (getUn x) <+> arg
+            where                
+                getUn x = case x of
+                    TypeList y  -> getUn y
+                    SigOrD      -> "toGE"
+                    _           -> "un" ++ show x
+
+---------------------------------------------------------------------------------------
+-- pretty dynamic constructor
+
+
+prettyDynCons :: Opc -> Doc
+prettyDynCons a = case verbatimBody $ opcName a of
+    Just res            -> res
+    Nothing | isOpcode  -> hsep [char 'f', args, char '=', cons, name, signature, consArgList]
+    Nothing             -> ppOpr
+    where
+        cons 
+            | isMulti a = text "mopcs"
+            | otherwise = text "opcs"
+
+        args = hsep as
+        
+        name = dquotes $ text $ opcName a
+
+        signature = pretty $ rates $ opcSignature a
+
+        consArgList 
+            | noArgLists        = list as
+            | onlyOneArgList    = head as
+            | isSegr            = parens $ hsep [head as, text "++", list $ tail as]
+            | otherwise         = parens $ hsep [list (init as), text "++", last as]
+
+        as   = fmap ((char 'a' <>) . int) [1 .. insArity]
+        insArity = length ins
+        ins  = skipMsg $ case inTypes $ types $ opcSignature a of
+            InTypes xs -> xs
+
+        isListArg x = case x of
+            TypeList _  -> True
+            _           -> False
+            
+
+        noArgLists = all (not . isListArg) ins
+
+        onlyOneArgList = case ins of
+            [TypeList _] -> True
+            _            -> False
+
+        isSegr = case ins of
+            [TypeList D, D, D]  -> True
+            _                   -> False
+
+        skipMsg xs = case xs of
+            Msg : ys -> ys
+            _        -> xs
+
+        isOpcode = case rates $ opcSignature a of
+            Single _   -> True
+            Multi  _ _ -> True
+            _          -> False
+
+        ppOpr = case rates $ opcSignature a of
+            Opr1    -> text $ "f a1 = opr1 \""  ++ opcName a ++ "\" a1"
+            Opr1k   -> text $ "f a1 = opr1k \"" ++ opcName a ++ "\" a1"
+            InfOpr  -> text $ "f a1 a2 = infOpr \""  ++ opcName a ++ "\" a1 a2"
+
+        verbatimBody :: String -> Maybe Doc
+        verbatimBody x = M.lookup x verbatimTab
+
+        verbatimTab :: M.Map String Doc
+        verbatimTab = fmap text $ M.fromList $ concat 
+            [ by 
+                (const $ "f a1 = oprBy \"urd\" [(Ar,[Kr]), (Kr,[Kr]), (Ir,[Ir])] [a1]")
+                ["urd"]
+            , by seg 
+                    ["linseg", "linsegb", "expseg"
+                    , "expsega"
+                    , "expsegb", "cosseg", "cossegb" ]
+            , by segr  ["linsegr", "expsegr", "cossegr"]
+            , by seg2
+                    ["transeg", "transegb"]
+            , by seg2r ["transegr"]
+            ]
+            where 
+                by f xs = zip xs (fmap f xs)
+
+                seg  x = "f a1 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
+                    ++ " (a1 ++ [1, last a1])"
+                seg2 x = "f a1 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
+                    ++ " (a1 ++ [1, 0, last a1])"
+                
+                segr x = "f a1 a2 a3 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
+                    ++ " (a1 ++ [1, last a1, a2, a3])"
+                seg2r x = "f a1 a2 a3 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
+                    ++ " (a1 ++ [1, 0, last a1, a2, a3])"
+
+                segRates = "[(Kr, repeat Ir), (Ar, repeat Ir)]"
+
+
+
+---------------------------------------------------------------------------------------
 -- pretty dynamic opcode
 
 prettyOpcDynamic :: Opc -> Doc
@@ -99,7 +283,7 @@ opcDynamicSignature a = context <+> ins <+> outs
             Procedure       -> "DepT m ()"
 
         context 
-            | isPure (opcType a)    = empty
+            | isPure a              = empty
             | otherwise             = text "Monad m =>"
 
 opcDynamicBody :: Opc -> Doc
@@ -137,6 +321,7 @@ opcDynamicBody a = case verbatimBody (opcName a) of
         verbatimBody x = case x of
             "urd"   -> Just $ text $ "depT . oprBy \"urd\" [(Ar,[Kr]), (Kr,[Kr]), (Ir,[Ir])]"
             _       -> Nothing
+
 
 ---------------------------------------------------------------------------------------
 -- pretty typed opcode
