@@ -272,7 +272,7 @@ getInTypes echo a = fmap (appendMidiMsg echo) $ case splitOn ".." str of
             where phi as = case as of
                     [] -> Nothing
                     _  -> Just $ InTypes $ init as ++ [TypeList $ last as]                     
-        rawElems x = mapM (getType (opcLineOuts a, echo, opcLineIns a) ) $ splitRates x
+        rawElems x = mapM (getType (opcLineOuts a, echo, opcLineIns a)  (opcLineName a) ) $ splitRates x
 
 getOutTypes :: String -> String -> String -> OpcLine -> Maybe OutTypes
 getOutTypes chapName secName funName x = fmap checkEffects $ case splitOn ".." $ opcLineOuts x of
@@ -281,7 +281,7 @@ getOutTypes chapName secName funName x = fmap checkEffects $ case splitOn ".." $
     where
         withoutDots a = fmap parseSingleOrMultiOuts $ rawElems a
         withDots a = fmap parseMultiOuts $ rawElems a
-        rawElems a = mapM (getType (opcLineOuts x, funName, opcLineIns x) ) $ splitRates a
+        rawElems a = mapM (getType (opcLineOuts x, funName, opcLineIns x) (opcLineName x) ) $ splitRates a
 
         checkEffects 
             | checkDirty chapName secName funName = SE
@@ -294,11 +294,12 @@ getOutTypes chapName secName funName x = fmap checkEffects $ case splitOn ".." $
         parseSingleOrMultiOuts xs = case xs of
             []  -> OutNone 
             [a] -> SingleOut a
+            xs | all ('[' /= ) (opcLineOuts x) && length xs < 5 -> TheTuple xs
             _   -> parseMultiOuts xs 
             
 
-getType :: Echo -> String -> Maybe Type
-getType echo arg = fmap (toType arg) $ getRate echo arg
+getType :: Echo -> String -> String -> Maybe Type
+getType echo opcName arg = fmap (toType arg) $ getRate echo arg
     where
         toType name rate = case rate of
             Xr  -> Sig
@@ -306,13 +307,16 @@ getType echo arg = fmap (toType arg) $ getRate echo arg
             Kr | isTab name -> Tab
             Kr  -> Sig
             Ir | isTab name -> Tab
+            Ir | isSf  name opcName -> Sf
             Ir  -> D
+            Sr | isSf  name opcName -> Sf
             Sr  -> Str 
             Fr  -> Spec
             Wr  -> Wspec
             Tvar -> TvarType
 
         isTab name = length (splitOn "fn" name) > 1
+        isSf name opcName =  "sf" `isPrefixOf` opcName && (name == "ipreindex" || name == "ifilhandle")  
 
 -------------------------------------------------------------------------
 -- title
@@ -359,7 +363,8 @@ dirtyOpcList =
     , "chnget", "chani", "chnrecv"
     , "serialBegin"
     , "OSClisten"
-    , "JackoAudioIn"]
+    , "JackoAudioIn"
+    , "times", "timek"]
 
 elIs :: String -> Element -> Bool
 elIs name = (== name) . qName . elName
@@ -517,7 +522,7 @@ appendMidiMsg name (InTypes xs)
 midiFuns = 
     [ "ampmidi", "ampmidid", "cpsmidi"
     , "cpsmidib", "cpstmid", "octmidi", "octmidib"
-    , "pchmidi", "pchmidib", "notnum", "pchbend"]
+    , "pchmidi", "pchmidib", "veloc", "notnum", "pchbend"]
 
 ----------------------------------------------------------
 -- download description
