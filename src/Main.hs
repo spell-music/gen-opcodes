@@ -15,7 +15,7 @@ import Csound.Gen.Pretty
 import Paths_gen_opcodes
 
 main = do 
-    mainBy Dynamic
+    -- mainBy Dynamic
     mainBy Typed
 
 -- print "hi" -- mainBy Dynamic

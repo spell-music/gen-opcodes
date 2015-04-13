@@ -352,7 +352,8 @@ dirtySecList = [ "Random (Noise) Generators." ]
 
 dirtyOpcList = 
     [ "delayr", "delayw", "deltap", "deltapi", "deltap3", "deltapx", "deltapxw"
-    , "ftgen"
+    , "ftgen", "ftgenonce", "ftgentmp"
+    , "rspline", "jspline"
     , "vco2init"
     , "dssiinit"
     , "vstinit"
