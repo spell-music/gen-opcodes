@@ -353,6 +353,7 @@ dirtySecList = [ "Random (Noise) Generators." ]
 dirtyOpcList = 
     [ "delayr", "delayw", "deltap", "deltapi", "deltap3", "deltapx", "deltapxw"
     , "ftgen", "ftgenonce", "ftgentmp"
+    , "rnd", "birnd"
     , "rspline", "jspline"
     , "vco2init"
     , "dssiinit"
@@ -384,18 +385,18 @@ rateHint = flip M.lookup rateTab
 rateTab = M.fromList $ concat 
     [ opr1 [ "ampdb", "ampdbfs", "cent", "cpsoct", "octave", "semitone"]
     , opr1k 
-        [ "dbamp", "dbfsamp", "birnd", "rnd", "cpsmidinn"
+        [ "dbamp", "rnd", "birnd", "dbfsamp", "cpsmidinn"
         , "cpspch", "octcps", "octmidinn", "octpch"
-        , "pchmidinn", "pchoct"]
+        , "pchmidinn", "pchoct"]    
     , infOpr []
     , return $ ("urd", SingleOpr [(Ar, JustList [Kr]), (Kr, JustList [Kr]), (Ir, JustList [Ir])])
     , return $ ("taninv2", Single [(Ar, JustList [Ar, Ar]), (Kr, JustList [Kr, Kr]), (Ir, JustList [Ir, Ir])])
     , return $ ("divz", Single [(Ar, JustList [Xr, Xr]), (Kr, JustList [Kr, Kr]), (Ir, JustList [Ir, Ir])])
     ]
-    where     
+    where    
 
         opr tag names = fmap (\x -> (x, tag)) names
-
+       
         opr1 = opr Opr1
         opr1k = opr Opr1k
         infOpr = opr InfOpr
@@ -409,6 +410,7 @@ typeTab = M.fromList $ concat
             [ by osc ["oscil", "oscili", "oscil3", "poscil", "poscil3"]
             , by seg  segNames
             , by segr segrNames
+            , by seg2r seg2rNames
             , by loopseg1 ["loopsegp"]
             , by loopseg2 ["looptseg", "lpsholdp"]
             , by loopseg3 ["loopseg", "loopxseg", "lpshold"]
@@ -455,7 +457,7 @@ typeTab = M.fromList $ concat
             -- SigOrD cases
             , by (opc1 [SigOrD, Tab] SigOrD) ["table", "tablei", "table3"]
             , by rnd0 ["urandom"]
-            , by rnd1 ["bexprnd", "cauchy", "duserrnd", "exprand", "linrand", "pcauchy", "poisson", "trirand", "unirand", "urd"]
+            , by rnd1 ["bexprnd", "cauchy", "duserrnd", "exprand", "linrand", "pcauchy", "poisson", "trirand", "unirand", "urd", "rnd", "birnd"]
             , by rnd2 ["random", "rnd31", "weibull"]
             , by rnd3 ["betarand", "cauchyi", "cuserrnd", "exprandi", "gaussi"]
 
@@ -466,15 +468,15 @@ typeTab = M.fromList $ concat
             , by fun1 
                 [ "ampdb", "ampdbfs", "cent", "cpsoct"
                 , "octave", "semitone", "dbamp"
-                , "dbfsamp", "birnd", "rnd", "cpsmidinn"
+                , "dbfsamp", "cpsmidinn"
                 , "cpspch", "octcps", "octmidinn"
-                , "octpch", "pchmidinn", "pchoct"]
+                , "octpch", "pchmidinn", "pchoct"]            
             ]
     where            
         str # x = by x [str]
         by a xs = fmap (\x -> (x, a)) xs
 
-        opc1 xs a = Types (InTypes xs) (SingleOut a)
+        opc1 xs a = Types (InTypes xs) (SingleOut a)        
         opc1e xs a = Types (InTypes xs) (SE $ SingleOut a)
         opc0 xs = Types (InTypes xs) (SE OutNone)
         opcs xs = Types (InTypes xs) (OutTuple)
@@ -482,12 +484,14 @@ typeTab = M.fromList $ concat
         osc = opc1 [Sig, Sig, Tab] Sig
         seg = opc1 [TypeList D] Sig
         segr = opc1 [TypeList D, D, D] Sig
+        seg2r = opc1 [TypeList D, D, D, D] Sig
         loopseg1 = opc1 [Sig, TypeList Sig] Sig 
         loopseg2 = opc1 [Sig, Sig, TypeList Sig] Sig
         loopseg3 = opc1 [Sig, Sig, D, TypeList Sig] Sig
 
         segNames = ["linseg", "linsegb", "expseg", "expsega", "expsegb", "cosseg", "cossegb", "transeg", "transegb"]
-        segrNames = fmap (++ "r") segNames
+        segrNames = filter (/= "transeg") $ fmap (++ "r") segNames
+        seg2rNames = ["transegr"]
 
         fin x = opc0 [Str, D, D, TypeList x]
         fout = opc0 [Str, D, TypeList Sig]
@@ -513,7 +517,7 @@ typeTab = M.fromList $ concat
         rnd2 = opc1e [SigOrD, SigOrD] SigOrD
         rnd3 = opc1e [SigOrD, SigOrD, SigOrD] SigOrD
 
-        fun1 = opc1 [SigOrD] SigOrD
+        fun1 = opc1 [SigOrD] SigOrD        
 
 appendMidiMsg :: String -> InTypes -> InTypes
 appendMidiMsg name (InTypes xs)

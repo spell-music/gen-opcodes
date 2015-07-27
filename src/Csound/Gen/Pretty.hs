@@ -222,7 +222,7 @@ prettyDynCons a = case verbatimBody $ opcName a of
 
         ppOpr = case rates $ opcSignature a of
             Opr1    -> text $ "f a1 = opr1 \""  ++ opcName a ++ "\" a1"
-            Opr1k   -> text $ "f a1 = opr1k \"" ++ opcName a ++ "\" a1"
+            Opr1k   -> text $ "f a1 = opr1k \"" ++ opcName a ++ "\" a1"            
             InfOpr  -> text $ "f a1 a2 = infOpr \""  ++ opcName a ++ "\" a1 a2"
 
         verbatimBody :: String -> Maybe Doc
@@ -235,8 +235,8 @@ prettyDynCons a = case verbatimBody $ opcName a of
                 ["urd"]
             , by seg 
                     ["linseg", "linsegb", "expseg"
-                    , "expsega"
-                    , "expsegb", "cosseg", "cossegb" ]
+                    , "cosseg", "cossegb" ]
+            , [expsega, expsegb]            
             , by segr  ["linsegr", "expsegr", "cossegr"]
             , by seg2
                     ["transeg", "transegb"]
@@ -246,18 +246,20 @@ prettyDynCons a = case verbatimBody $ opcName a of
                 by f xs = zip xs (fmap f xs)
 
                 seg  x = "f a1 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
-                    ++ " (a1 ++ [1, last a1])"
+                    ++ " (a1 ++ [1, last a1])"                               
                 seg2 x = "f a1 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
                     ++ " (a1 ++ [1, 0, last a1])"
                 
                 segr x = "f a1 a2 a3 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
                     ++ " (a1 ++ [1, last a1, a2, a3])"
-                seg2r x = "f a1 a2 a3 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
-                    ++ " (a1 ++ [1, 0, last a1, a2, a3])"
+                seg2r x = "f a1 a2 a3 a4 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
+                    ++ " (a1 ++ [1, 0, last a1, a2, a3, a4])"
 
                 segRates = "[(Kr, repeat Ir), (Ar, repeat Ir)]"
+                segaRates = "[(Ar, repeat Ir)]"
 
-
+                expsega = ("expsega", "f a1 = opcs \"expsega\" [(Ar, repeat Ir)] (a1 ++ [1, last a1])")
+                expsegb = ("expsegb", "f a1 = opcs \"expsegb\" [(Kr, repeat Ir), (Ar, repeat Ir)] (a1 ++ [1, last a1])")   
 
 ---------------------------------------------------------------------------------------
 -- pretty dynamic opcode
@@ -314,7 +316,7 @@ opcDynamicBody a = case verbatimBody (opcName a) of
 
         ppOpr = case rates $ opcSignature a of
             Opr1    -> text $ "\\xs -> opr1 \""  ++ opcName a ++ "\" (head xs)"
-            Opr1k   -> text $ "\\xs -> opr1k \"" ++ opcName a ++ "\" (head xs)"
+            Opr1k   -> text $ "\\xs -> opr1k \"" ++ opcName a ++ "\" (head xs)"  
             InfOpr  -> text $ "\\xs -> infOpr \""  ++ opcName a ++ "\" (head xs) (head $ tail xs)"
 
         verbatimBody :: String -> Maybe Doc
