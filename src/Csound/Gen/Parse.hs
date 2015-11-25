@@ -525,7 +525,7 @@ appendMidiMsg name (InTypes xs)
     | otherwise = InTypes xs
 
 midiFuns = 
-    [ "ampmidi", "ampmidid", "cpsmidi"
+    [ "ampmidi", "cpsmidi"
     , "cpsmidib", "cpstmid", "octmidi", "octmidib"
     , "pchmidi", "pchmidib", "veloc", "notnum", "pchbend"]
 
