@@ -16,6 +16,7 @@ import Data.List
 import Data.Function
 
 import qualified Data.Map as M
+import qualified Data.Set as Set
 
 import Data.List.Split
 import Text.XML.Light hiding (Node)
@@ -37,7 +38,7 @@ parseBy docTab = first toChap . parseOpcLines docTab . getSecs . getContent
 -- parsing fsm
 
 getSecs :: [Element] -> [Node OpcLine]
-getSecs = reverse . findSec []
+getSecs = fmap (filterNode (not . isBlackOpcode)) .  reverse . findSec []
     where
         findSec res [] = res
 
@@ -59,6 +60,9 @@ getSecs = reverse . findSec []
 isInBlackList :: String -> Bool
 isInBlackList = ( `elem` blackList) . splitTitle 
 
+isBlackOpcode :: OpcLine -> Bool
+isBlackOpcode = (flip Set.member blackOpcodesList) . opcLineName
+
 blackList = fmap splitTitle $
     [ "Orchestra Syntax:Header."
     , "Orchestra Syntax:Block Statements."
@@ -76,6 +80,13 @@ blackList = fmap splitTitle $
     , "Mathematical Operations:Trigonometric Functions."
     , "Python Opcodes."
     , "Utilities." ]
+
+-- do not render opcodes from this list
+blackOpcodesList = Set.fromList
+    [ "turnoff2"
+    , "JackoFreewheel"
+    , "JackoInfo"    
+    ]
 
 -------------------------------------------------------------------------
 -- groups

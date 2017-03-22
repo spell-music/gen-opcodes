@@ -11,6 +11,12 @@ data Node a = Node
     , nodeItems :: [a]
     } deriving (Show)
 
+instance Functor Node where
+    fmap f node = Node { nodeName = nodeName node, nodeItems = fmap f $ nodeItems node }
+
+filterNode :: (a -> Bool) -> Node a -> Node a
+filterNode pred node = node { nodeItems = filter pred $ nodeItems node }
+
 type Chap   = Node Sec
 type Sec    = Node Opc
 
