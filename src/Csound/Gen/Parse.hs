@@ -22,6 +22,7 @@ import Data.List.Split
 import Text.XML.Light hiding (Node)
 import Network.HTTP.Conduit
 import Control.Exception.Lifted(catch)
+import System.FilePath
 
 import Csound.Gen.Types
 
@@ -32,7 +33,11 @@ parse :: String -> ([Chap], [Unparsed])
 parse = parseBy M.empty
 
 parseBy :: DocTab -> String -> ([Chap], [Unparsed])
-parseBy docTab = first toChap . parseOpcLines docTab . getSecs . getContent
+parseBy docTab = first toChap . parseOpcLines docTab . getSecs . getContent . rmSpecSymbols
+
+rmSpecSymbols :: String -> String
+rmSpecSymbols = rmBy "&nbsp;"
+    where rmBy sub = concat . splitOn sub
 
 -------------------------------------------------------------------------
 -- parsing fsm
@@ -53,18 +58,19 @@ getSecs = fmap (filterNode (not . isBlackOpcode)) .  reverse . findSec []
             Just a  -> findSec (formRes title linesSoFar res) (x:xs)
             Nothing -> case getOpcLine x of
                 Just a  -> completeSec res (a:linesSoFar) title xs
-                Nothing -> completeSec res linesSoFar title xs              
+                Nothing -> completeSec res linesSoFar title xs
 
         formRes title linesSoFar chaps = (Node title $ reverse linesSoFar) : chaps
 
 isInBlackList :: String -> Bool
-isInBlackList = ( `elem` blackList) . splitTitle 
+isInBlackList = ( `elem` blackList) . splitTitle
 
 isBlackOpcode :: OpcLine -> Bool
 isBlackOpcode = (flip Set.member blackOpcodesList) . opcLineName
 
 blackList = fmap splitTitle $
-    [ "Orchestra Syntax:Header."
+    [ "Array Opcodes."
+    , "Orchestra Syntax:Header."
     , "Orchestra Syntax:Block Statements."
     , "Orchestra Syntax:Macros."
     , "Instrument Control:Conditional Values."
@@ -75,7 +81,7 @@ blackList = fmap splitTitle $
     , "Table Control:Table Queries."
     , "Table Control:Dynamic Selection."
     , "Table Control:Read/Write Opreations."
-    , "Mathematical Operations:Arithmetic and Logic Operations." 
+    , "Mathematical Operations:Arithmetic and Logic Operations."
     , "Mathematical Operations:Mathematical Functions. "
     , "Mathematical Operations:Trigonometric Functions."
     , "Python Opcodes."
@@ -85,18 +91,20 @@ blackList = fmap splitTitle $
 blackOpcodesList = Set.fromList
     [ "turnoff2"
     , "JackoFreewheel"
-    , "JackoInfo"    
-    ]
+    , "JackoInfo"
+    , "pvs2tab"
+    , "return"
+    , "tab2pvs" ]
 
 -------------------------------------------------------------------------
 -- groups
 
 parseOpcLines :: DocTab -> [Node OpcLine] -> ([Node Opc], [Unparsed])
-parseOpcLines docTab = runWriter . mapM (\x -> fmap (Node (nodeName x)) $ uncurry (toOpc docTab) (splitTitle $ nodeName x) (nodeItems x)) 
-    
+parseOpcLines docTab = runWriter . mapM (\x -> fmap (Node (nodeName x)) $ uncurry (toOpc docTab) (splitTitle $ nodeName x) (nodeItems x))
+
 toChap :: [Node Opc] -> [Chap]
 toChap = fmap toNode . groupBy eqChapName
-    where 
+    where
         eqChapName = (==) `on` chapName
         toNode xs = Node (chapName $ head xs) (fmap toSec xs)
         toSec (Node sec opcs) = Node (snd $ splitTitle sec) opcs
@@ -123,15 +131,15 @@ fromOpcLines docTab chapName secName as = case (rateHint echo <|> getRates echo 
         getShortDescription = fst $ getDescription
         getLongDescription  = snd $ getDescription
 
-        getDescription = maybe ("", "") id $ M.lookup name docTab 
+        getDescription = maybe ("", "") id $ M.lookup name docTab
 
 -------------------------------------------------------------------------
 -- opc
 
-data OpcLine = OpcLine 
+data OpcLine = OpcLine
     { opcLineName   :: String
     , opcLineIns    :: String
-    , opcLineOuts   :: String 
+    , opcLineOuts   :: String
     , opcLineLink   :: String
     } deriving (Show)
 
@@ -144,14 +152,14 @@ getOpcLine a
             [x] -> all (\y -> isAlphaNum y || y == '_') $ trim $ strContent x
             _   -> False
 
-        fixFLhvsBoxSetValueBug x 
+        fixFLhvsBoxSetValueBug x
             | opcLineName x == "FLhvsBox" && opcLineOuts x == "" = x { opcLineName = "FLhvsBoxSetValue" }
-            | otherwise = x            
+            | otherwise = x
 
-        fixInitTabsForOscills x 
+        fixInitTabsForOscills x
             | opcLineName x == "oscil" || opcLineName x == "oscil3" = x { opcLineIns = phi $ opcLineIns x }
             | otherwise = x
-            where phi = (++ ", ifn [, iphs]" ) . takeWhile (/= '[') 
+            where phi = (++ ", ifn [, iphs]" ) . takeWhile (/= '[')
 
 
 parseParts :: [Content] -> Maybe OpcLine
@@ -161,35 +169,35 @@ parseParts xs = case xs of
     Elem name : Text ins : []               -> Just $ opcLine name (cdData ins) ""
     Elem name            : []               -> Just $ opcLine name ""           ""
     _                                       -> Nothing
-    where 
+    where
         opcLine a ins outs = OpcLine (getName a) ins outs (getLink a)
         getName a = trim $ strContent a
         getLink a = maybe (error "getLink") id $ findAttrBy ((== "href") . qName) a
-    
+
 -------------------------------------------------------------------------
 -- rates
 
-type Echo = (String, String, String) 
+type Echo = (String, String, String)
 
 getRates :: String -> [OpcLine] -> Maybe Rates
 getRates echo as = fmap fromRateLists $ getRateLists echo $ fmap (\x -> (opcLineOuts x, opcLineIns x)) as
     where
-          debug x 
+          debug x
             | echo == "prepiano" = error $ show x
             | otherwise = x
 
 fromRateLists :: [(RateList, RateList)] -> Rates
-fromRateLists rs 
+fromRateLists rs
     | isSingleOutput    = Single $ fmap (\(x, y) -> (getSingleOutput x, y)) rs
     | isProcedure       = Single $ (\x -> [(Xr, snd x)]) $ head rs
     | otherwise         = uncurry Multi $ head $ reverse $ sortBy (longerRateList `on` fst) rs
-    where 
-        isSingleOutput = all (isSingleRateList . fst) rs  
+    where
+        isSingleOutput = all (isSingleRateList . fst) rs
         isProcedure = all (isEmptyRateList . fst) rs
-        getSingleOutput = maybe (error "getSingleOutput") id . getSingleRateList 
+        getSingleOutput = maybe (error "getSingleOutput") id . getSingleRateList
 
 getRateLists :: String -> [(String, String)] -> Maybe [(RateList, RateList)]
-getRateLists anOpcName = debug . mapM phi 
+getRateLists anOpcName = debug . mapM phi
     where phi (a, b) = liftA2 (,) (parseRateList echo a) (parseRateList echo b)
             where echo = (a, anOpcName, b)
 
@@ -207,14 +215,14 @@ parseRateList echo x = case splitOn ".." x of
             where phi as = case as of
                     []  -> Nothing
                     [a] -> Just $ Repeat a
-                    _   -> 
-                        let lx = last as 
+                    _   ->
+                        let lx = last as
                             ix = reverse $ dropWhile (== lx) $ reverse as
                         in  case ix of
                             []  -> Just $ Repeat lx
                             _   -> Just $ Append (JustList ix) (Repeat lx)
-        rawRates a = mapM (getRate echo) $ splitRates a        
-    
+        rawRates a = mapM (getRate echo) $ splitRates a
+
 
 splitRates :: String -> [String]
 splitRates = filter (not . null) . splitOneOf "[], \\\n\160" . squashStr
@@ -249,6 +257,7 @@ getRate echo x = case x of
     '\"' : _ -> Just Sr
     'f' : _ -> Just Fr
     'w' : _ -> Just Wr
+    'Q' : _ -> Just Xr
     "tvar"  -> Nothing -- Just Tvar
   --  '.' : _ -> Just Dots
     "soundfont" -> Just Ir
@@ -268,21 +277,21 @@ getRate echo x = case x of
     "het_file" -> Nothing
     "cstext_file" -> Nothing
     _ -> error $ "unexpected rate: " ++ show echo ++ " " ++ x
-    
+
 -------------------------------------------------------------------------
 -- types
 
 getInTypes :: String -> OpcLine -> Maybe InTypes
 getInTypes echo a = fmap (appendMidiMsg echo) $ case splitOn ".." str of
     [b] -> withoutDots b
-    b:_ -> withDots b 
-    where 
+    b:_ -> withDots b
+    where
         str = takeWhile (/= '[') $ opcLineIns a
         withoutDots = fmap InTypes . rawElems
         withDots = (phi =<< ) . rawElems
             where phi as = case as of
                     [] -> Nothing
-                    _  -> Just $ InTypes $ init as ++ [TypeList $ last as]                     
+                    _  -> Just $ InTypes $ init as ++ [TypeList $ last as]
         rawElems x = mapM (getType (opcLineOuts a, echo, opcLineIns a)  (opcLineName a) ) $ splitRates x
 
 getOutTypes :: String -> String -> String -> OpcLine -> Maybe OutTypes
@@ -294,20 +303,20 @@ getOutTypes chapName secName funName x = fmap checkEffects $ case splitOn ".." $
         withDots a = fmap parseMultiOuts $ rawElems a
         rawElems a = mapM (getType (opcLineOuts x, funName, opcLineIns x) (opcLineName x) ) $ splitRates a
 
-        checkEffects 
+        checkEffects
             | checkDirty chapName secName funName = SE
             | otherwise = id
 
-        parseMultiOuts xs 
+        parseMultiOuts xs
             | all ( == Sig) xs = OutTuple
             | otherwise        = Tuple
 
         parseSingleOrMultiOuts xs = case xs of
-            []  -> OutNone 
+            []  -> OutNone
             [a] -> SingleOut a
             xs | all ('[' /= ) (opcLineOuts x) && length xs < 5 -> TheTuple xs
-            _   -> parseMultiOuts xs 
-            
+            _   -> parseMultiOuts xs
+
 
 getType :: Echo -> String -> String -> Maybe Type
 getType echo opcName arg = fmap (toType arg) $ getRate echo arg
@@ -321,19 +330,22 @@ getType echo opcName arg = fmap (toType arg) $ getRate echo arg
             Ir | isSf  name opcName -> Sf
             Ir  -> D
             Sr | isSf  name opcName -> Sf
-            Sr  -> Str 
+            Sr  -> Str
             Fr  -> Spec
             Wr  -> Wspec
             Tvar -> TvarType
 
-        isTab name = length (splitOn "fn" name) > 1
-        isSf name opcName =  "sf" `isPrefixOf` opcName && (name == "ipreindex" || name == "ifilhandle")  
+        isTab name = (length (splitOn "fn" name) > 1 || isTabN name)
+        isSf name opcName =  "sf" `isPrefixOf` opcName && (name == "ipreindex" || name == "ifilhandle")
+
+        isTabN x = (pref == "itab" || pref == "ktab") && (all isDigit suff)
+            where (pref, suff) = splitAt 4 x
 
 -------------------------------------------------------------------------
 -- title
 
 getTitle :: Element -> Maybe String
-getTitle a 
+getTitle a
     | elIs "p" a    = fmap strContent $ filterElement (elIs "strong") a
     | otherwise     = Nothing
 
@@ -345,14 +357,14 @@ splitTitle x = (filter isAlphaNum a, filter (/= '\160') $ drop 1 b)
 -- content
 
 getContent :: String -> [Element]
-getContent = tail . elChildren . ( !! 1) . elChildren . maybe (error "getContent1") id . filterElement (elIs "body") . maybe (error "getContent2") id . parseXMLDoc 
+getContent = tail . elChildren . ( !! 1) . elChildren . maybe (error "getContent1") id . filterElement (elIs "body") . maybe (error "getContent2") id . parseXMLDoc
 
 --------------------------------------------------------------------
 -- pure / dirty
 
 checkDirty :: String -> String -> String -> Bool
 checkDirty chapName secName opcName = isDirtyChap || isDirtySec || isDirtyOpc
-    where 
+    where
         isDirtyChap = (`elem` dirtyChapList) chapName
         isDirtySec  = (`elem` dirtySecList)  secName
         isDirtyOpc  = (`elem` dirtyOpcList)  opcName
@@ -361,7 +373,7 @@ dirtyChapList = ["FLTK"]
 
 dirtySecList = [ "Random (Noise) Generators." ]
 
-dirtyOpcList = 
+dirtyOpcList =
     [ "delayr", "delayw", "deltap", "deltapi", "deltap3", "deltapx", "deltapxw"
     , "ftgen", "ftgenonce", "ftgentmp"
     , "rnd", "birnd"
@@ -371,7 +383,7 @@ dirtyOpcList =
     , "vstinit"
     , "OSCinit"
     , "MixerGetLevel", "MixerReceive"
-    , "imagecreate", "imageload" 
+    , "imagecreate", "imageload"
     , "fiopen"
     , "chnget", "chani", "chnrecv"
     , "serialBegin"
@@ -393,21 +405,21 @@ trim = reverse . dropWhile isSpace . reverse . dropWhile isSpace
 rateHint :: String -> Maybe Rates
 rateHint = flip M.lookup rateTab
 
-rateTab = M.fromList $ concat 
+rateTab = M.fromList $ concat
     [ opr1 [ "ampdb", "ampdbfs", "cent", "cpsoct", "octave", "semitone"]
-    , opr1k 
+    , opr1k
         [ "dbamp", "rnd", "birnd", "dbfsamp", "cpsmidinn"
         , "cpspch", "octcps", "octmidinn", "octpch"
-        , "pchmidinn", "pchoct"]    
+        , "pchmidinn", "pchoct"]
     , infOpr []
     , return $ ("urd", SingleOpr [(Ar, JustList [Kr]), (Kr, JustList [Kr]), (Ir, JustList [Ir])])
     , return $ ("taninv2", Single [(Ar, JustList [Ar, Ar]), (Kr, JustList [Kr, Kr]), (Ir, JustList [Ir, Ir])])
     , return $ ("divz", Single [(Ar, JustList [Xr, Xr]), (Kr, JustList [Kr, Kr]), (Ir, JustList [Ir, Ir])])
     ]
-    where    
+    where
 
         opr tag names = fmap (\x -> (x, tag)) names
-       
+
         opr1 = opr Opr1
         opr1k = opr Opr1k
         infOpr = opr InfOpr
@@ -417,7 +429,7 @@ rateTab = M.fromList $ concat
 typeHint :: String -> Maybe Types
 typeHint = flip M.lookup typeTab
 
-typeTab = M.fromList $ concat 
+typeTab = M.fromList $ concat
             [ by osc ["oscil", "oscili", "oscil3", "poscil", "poscil3"]
             , by seg  segNames
             , by segr segrNames
@@ -445,7 +457,7 @@ typeTab = M.fromList $ concat
             , "platerev" # opcs [D, D, Sig, D, D, D, D, TypeList Sig]
             , "denorm" # opc0 [TypeList Sig]
             , "filter2" # opc1 [Sig, D, D, TypeList D] Sig
-            , "zfilter2" # opc1 [Sig, Sig, Sig, D, D, TypeList D] Sig 
+            , "zfilter2" # opc1 [Sig, Sig, Sig, D, D, TypeList D] Sig
             , "chebyshevpoly" # opc1 [Sig, TypeList Sig] Sig
             , "polynomial" # opc1 [Sig, TypeList Sig] Sig
             , by maxMin ["max", "min", "maxabs", "minabs", "sum", "product", "mac", "maca"]
@@ -474,20 +486,20 @@ typeTab = M.fromList $ concat
 
             -- funs with arity 2
             , by (opc1 [SigOrD, SigOrD] SigOrD) ["taninv2", "divz"]
-            
+
             -- simple funs
-            , by fun1 
+            , by fun1
                 [ "ampdb", "ampdbfs", "cent", "cpsoct"
                 , "octave", "semitone", "dbamp"
                 , "dbfsamp", "cpsmidinn"
                 , "cpspch", "octcps", "octmidinn"
-                , "octpch", "pchmidinn", "pchoct"]            
+                , "octpch", "pchmidinn", "pchoct"]
             ]
-    where            
+    where
         str # x = by x [str]
         by a xs = fmap (\x -> (x, a)) xs
 
-        opc1 xs a = Types (InTypes xs) (SingleOut a)        
+        opc1 xs a = Types (InTypes xs) (SingleOut a)
         opc1e xs a = Types (InTypes xs) (SE $ SingleOut a)
         opc0 xs = Types (InTypes xs) (SE OutNone)
         opcs xs = Types (InTypes xs) (OutTuple)
@@ -496,7 +508,7 @@ typeTab = M.fromList $ concat
         seg = opc1 [TypeList D] Sig
         segr = opc1 [TypeList D, D, D] Sig
         seg2r = opc1 [TypeList D, D, D, D] Sig
-        loopseg1 = opc1 [Sig, TypeList Sig] Sig 
+        loopseg1 = opc1 [Sig, TypeList Sig] Sig
         loopseg2 = opc1 [Sig, Sig, TypeList Sig] Sig
         loopseg3 = opc1 [Sig, Sig, D, TypeList Sig] Sig
 
@@ -528,14 +540,14 @@ typeTab = M.fromList $ concat
         rnd2 = opc1e [SigOrD, SigOrD] SigOrD
         rnd3 = opc1e [SigOrD, SigOrD, SigOrD] SigOrD
 
-        fun1 = opc1 [SigOrD] SigOrD        
+        fun1 = opc1 [SigOrD] SigOrD
 
 appendMidiMsg :: String -> InTypes -> InTypes
 appendMidiMsg name (InTypes xs)
     | name `elem` midiFuns =  InTypes (Msg : xs)
     | otherwise = InTypes xs
 
-midiFuns = 
+midiFuns =
     [ "ampmidi", "cpsmidi"
     , "cpsmidib", "cpstmid", "octmidi", "octmidib"
     , "pchmidi", "pchmidib", "veloc", "notnum", "pchbend"]
@@ -545,10 +557,11 @@ midiFuns =
 
 downloadDesc :: Opc -> IO (String, String)
 downloadDesc opc = fmap (maybe ("", "") id . fmap getDesc) . simpleHttp' . fullPath . opcDocLink . opcDoc $ opc
-    where 
-        fullPath x = "http://www.csounds.com/manual/html/" ++ x
+    where
+        -- fullPath x = "http://csound.com/docs/manual/" ++ x
+        fullPath x = x
 
-        getDesc x = 
+        getDesc x =
             ( trim $ dropOnLongHyphen $ orEmpty (getShortDesc =<< doc)
             , trim $ orEmpty (getLongDesc =<< doc))
             where doc = parseXMLDoc x
@@ -558,17 +571,17 @@ downloadDesc opc = fmap (maybe ("", "") id . fmap getDesc) . simpleHttp' . fullP
         getShortDesc = fmap getText . (filterElement (elIs "p") =<<) . filterElement elemShortDesc
 
         getLongDesc = fmap getText . (filterElement (elIs "p") =<<) . filterElement elemLongDesc
-                    
-        elemShortDesc = titleIs linkName
-        elemLongDesc  = titleIs "Description"
 
-        linkName = takeWhile (/= '.') $ opcDocLink $ opcDoc opc
+        elemShortDesc = any (== Attr (QName "class" Nothing Nothing) "refnamediv") . elAttribs
+        elemLongDesc  = any ((=="Description"). strContent) . onlyElems  . elContent
+
+        linkName = takeBaseName $ opcDocLink $ opcDoc opc
 
         titleIs name = (== Just name) . lookupAttrBy ((== "title") . qName) . elAttribs
 
         getText :: Element -> String
         getText elem = concat $ fmap go $ elContent elem
-            where 
+            where
                 go x = case x of
                     Elem a -> getText a
                     Text cd -> cdData cd
@@ -577,7 +590,7 @@ downloadDesc opc = fmap (maybe ("", "") id . fmap getDesc) . simpleHttp' . fullP
         dropOnLongHyphen xs = case splitOn "\226\128\148" xs of
             [a] -> a
             _:as -> concat as
-        
+
         simpleHttp' x = catch (fmap Just $ simpleHttp x) $ \(e::HttpException) -> case e of
             _ -> do
                 print $ "no page for: " ++ x

@@ -12,7 +12,7 @@ import Text.PrettyPrint.Leijen
 import Csound.Gen.Types
 
 mainModule :: PackageType -> [Chap] -> String
-mainModule packageType chaps = pp $ vCat 
+mainModule packageType chaps = pp $ vCat
     [ text ("module Csound." ++ (show packageType) ++ ".Opcode") <+> nest 4 (parens $
         vcat $ punctuate comma $ fmap ((text "module" <+> ) . text . fullName packageType) names) <+> text "where"
     , vcat $ fmap ((text "import" <+> ) . text . fullName packageType) names
@@ -42,7 +42,7 @@ data Import = SimpleImport String | QualifiedImport String String
 imports :: PackageType -> [Import]
 imports x = case x of
     Dynamic  -> [SimpleImport "Csound.Dynamic"]
-    Typed    -> 
+    Typed    ->
         [ SimpleImport "Control.Applicative"
         , SimpleImport "Control.Monad.Trans.Class"
         , SimpleImport "Csound.Dynamic"
@@ -54,7 +54,7 @@ anAlias = "D"
 ------------------------------------------------------------------
 
 prettyModules :: PackageType -> [Chap] -> [(String, String)]
-prettyModules packageType = 
+prettyModules packageType =
     fmap $ \x -> (nodeName x, pp (pChap packageType (imports packageType) (renderOpc packageType) $ removeEmptySecs x))
 
 pp a = displayS (renderPretty 0.5 200 a) ""
@@ -64,10 +64,10 @@ removeEmptySecs a = a { nodeItems = filter (not . null . nodeItems) $ nodeItems 
 
 pChap :: PackageType -> [Import] -> RenderOpc -> Chap -> Doc
 pChap packageType imports renderOpc a = vCat [chapHeader, chapImports, chapBody]
-    where 
+    where
         chapHeader  = hsHeader (fullName packageType $ nodeName a) (fmap getFuns $ nodeItems a)
         chapBody    = vCat $ fmap (pSec renderOpc $ nodeName a) $ nodeItems a
-        chapImports = hsImports imports 
+        chapImports = hsImports imports
 
         getFuns x = (nodeName x, fmap hsOpcName $ nodeItems x)
 
@@ -77,16 +77,16 @@ fullName packageType a = "Csound." ++ (show packageType) ++ ".Opcode." ++ a
 pSec :: RenderOpc -> String -> Sec -> Doc
 pSec renderOpc chapName a = vCat
     [ text "--" <+> text (nodeName a)
-    , vCat $ fmap renderOpc $ nodeItems a ]
+    , vCat $ fmap renderOpc $ nubBy (\a b -> opcName a == opcName b) $ nodeItems a ]
 
 ---------------------------------------------------------------------------------------
--- 
+--
 
 instance Pretty Opc where
-    pretty a = vcat 
+    pretty a = vcat
         [ pretty $ opcDoc a
         , hsep [text (hsOpcName a), text "::",  opcTypedSignature a]
-        , prettyTyCons a 
+        , prettyTyCons a
         , hsep [ text "    where", prettyDynCons a ]]
 
 ---------------------------------------------------------------------------------------
@@ -97,14 +97,14 @@ prettyTyCons a = hsep [name, args, char '=', cons, maybeReturn, text "f", consAr
     where
         name = text $ hsOpcName a
 
-        maybeReturn 
+        maybeReturn
             | isConst   = text "$ return $"
             | otherwise = text "$"
 
         cons = case outTypes $ types $ opcSignature a of
             SingleOut SigOrD    -> text "fromGE"
             SE (SingleOut SigOrD) -> dirtySingle "fromGE"
-            
+
             SingleOut ty        -> text $ show ty
             SE (SingleOut ty)   -> dirtySingle $ show ty
 
@@ -128,9 +128,9 @@ prettyTyCons a = hsep [name, args, char '=', cons, maybeReturn, text "f", consAr
 
         args = onMidiArg $ hsep as
 
-        consArgs 
+        consArgs
             | isConst   = empty
-            | otherwise = (text "<$>" <+>) 
+            | otherwise = (text "<$>" <+>)
                 $ hsep $ intersperse (text "<*>") $ zipWith mkUn as ins
 
         isConst = insArity == 0
@@ -138,7 +138,7 @@ prettyTyCons a = hsep [name, args, char '=', cons, maybeReturn, text "f", consAr
         as   = fmap ((char 'b' <>) . int) [1 .. insArity]
         insArity = length ins
         ins  = skipMsg $ case inTypes $ types $ opcSignature a of
-            InTypes xs -> xs        
+            InTypes xs -> xs
 
         isListArg x = case x of
             TypeList _  -> True
@@ -159,7 +159,7 @@ prettyTyCons a = hsep [name, args, char '=', cons, maybeReturn, text "f", consAr
         mkUn arg x = case x of
             TypeList y  -> hsep [text "mapM", (text $ getUn y), arg]
             _           -> text (getUn x) <+> arg
-            where                
+            where
                 getUn x = case x of
                     TypeList y  -> getUn y
                     SigOrD      -> "toGE"
@@ -175,17 +175,17 @@ prettyDynCons a = case verbatimBody $ opcName a of
     Nothing | isOpcode  -> hsep [char 'f', args, char '=', cons, name, signature, consArgList]
     Nothing             -> ppOpr
     where
-        cons 
+        cons
             | isMulti a = text "mopcs"
             | otherwise = text "opcs"
 
         args = hsep as
-        
+
         name = dquotes $ text $ opcName a
 
         signature = pretty $ rates $ opcSignature a
 
-        consArgList 
+        consArgList
             | noArgLists        = list as
             | onlyOneArgList    = head as
             | isSegr            = parens $ hsep [head as, text "++", list $ tail as]
@@ -199,7 +199,7 @@ prettyDynCons a = case verbatimBody $ opcName a of
         isListArg x = case x of
             TypeList _  -> True
             _           -> False
-            
+
 
         noArgLists = all (not . isListArg) ins
 
@@ -222,50 +222,50 @@ prettyDynCons a = case verbatimBody $ opcName a of
 
         ppOpr = case rates $ opcSignature a of
             Opr1    -> text $ "f a1 = opr1 \""  ++ opcName a ++ "\" a1"
-            Opr1k   -> text $ "f a1 = opr1k \"" ++ opcName a ++ "\" a1"            
+            Opr1k   -> text $ "f a1 = opr1k \"" ++ opcName a ++ "\" a1"
             InfOpr  -> text $ "f a1 a2 = infOpr \""  ++ opcName a ++ "\" a1 a2"
 
         verbatimBody :: String -> Maybe Doc
         verbatimBody x = M.lookup x verbatimTab
 
         verbatimTab :: M.Map String Doc
-        verbatimTab = fmap text $ M.fromList $ concat 
-            [ by 
+        verbatimTab = fmap text $ M.fromList $ concat
+            [ by
                 (const $ "f a1 = oprBy \"urd\" [(Ar,[Kr]), (Kr,[Kr]), (Ir,[Ir])] [a1]")
                 ["urd"]
-            , by seg 
+            , by seg
                     ["linseg", "linsegb", "expseg"
                     , "cosseg", "cossegb" ]
-            , [expsega, expsegb]            
+            , [expsega, expsegb]
             , by segr  ["linsegr", "expsegr", "cossegr"]
             , by seg2
                     ["transeg", "transegb"]
             , by seg2r ["transegr"]
             ]
-            where 
+            where
                 by f xs = zip xs (fmap f xs)
 
-                seg  x = "f a1 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
-                    ++ " (a1 ++ [1, last a1])"                               
-                seg2 x = "f a1 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
+                seg  x = "f a1 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates
+                    ++ " (a1 ++ [1, last a1])"
+                seg2 x = "f a1 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates
                     ++ " (a1 ++ [1, 0, last a1])"
-                
-                segr x = "f a1 a2 a3 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
+
+                segr x = "f a1 a2 a3 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates
                     ++ " (a1 ++ [1, last a1, a2, a3])"
-                seg2r x = "f a1 a2 a3 a4 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates 
+                seg2r x = "f a1 a2 a3 a4 = setRate Kr $ opcs \"" ++ x ++ "\" " ++ segRates
                     ++ " (a1 ++ [1, 0, last a1, a2, a3, a4])"
 
                 segRates = "[(Kr, repeat Ir), (Ar, repeat Ir)]"
                 segaRates = "[(Ar, repeat Ir)]"
 
                 expsega = ("expsega", "f a1 = opcs \"expsega\" [(Ar, repeat Ir)] (a1 ++ [1, last a1])")
-                expsegb = ("expsegb", "f a1 = opcs \"expsegb\" [(Kr, repeat Ir), (Ar, repeat Ir)] (a1 ++ [1, last a1])")   
+                expsegb = ("expsegb", "f a1 = opcs \"expsegb\" [(Kr, repeat Ir), (Ar, repeat Ir)] (a1 ++ [1, last a1])")
 
 ---------------------------------------------------------------------------------------
 -- pretty dynamic opcode
 
 prettyOpcDynamic :: Opc -> Doc
-prettyOpcDynamic a = vcat 
+prettyOpcDynamic a = vcat
     [ pretty $ opcDoc a
     , hsFun (hsOpcName a) (opcDynamicSignature a) (opcDynamicBody a) ]
 
@@ -273,10 +273,10 @@ prettyOpcDynamic a = vcat
 opcDynamicSignature :: Opc -> Doc
 opcDynamicSignature a = context <+> ins <+> outs
     where
-        ins 
+        ins
             | isConstant a  = empty
             | otherwise     = text "[E] ->"
-    
+
         outs = text $ case opcType a of
             PureSingle      -> "E"
             DirtySingle     -> "DepT m E"
@@ -284,7 +284,7 @@ opcDynamicSignature a = context <+> ins <+> outs
             DirtyMulti      -> "MultiOut (DepT m [E])"
             Procedure       -> "DepT m ()"
 
-        context 
+        context
             | isPure a              = empty
             | otherwise             = text "Monad m =>"
 
@@ -292,7 +292,7 @@ opcDynamicBody :: Opc -> Doc
 opcDynamicBody a = case verbatimBody (opcName a) of
     Just res -> res
     Nothing  | isOpcode  -> hsep [cons, name, signature, mConst]
-    Nothing              -> ppOpr 
+    Nothing              -> ppOpr
     where
         cons = text $ case opcType a of
             PureSingle      -> "opcs"
@@ -300,12 +300,12 @@ opcDynamicBody a = case verbatimBody (opcName a) of
             PureMulti       -> "mopcs"
             DirtyMulti      -> "mdepT . mopcs"
             Procedure       -> "depT_ . opcs"
-        
-        name = dquotes $ text $ opcName a    
+
+        name = dquotes $ text $ opcName a
 
         signature = pretty $ rates $ opcSignature a
 
-        mConst 
+        mConst
             | isConstant a  = text "$ []"
             | otherwise     = empty
 
@@ -316,7 +316,7 @@ opcDynamicBody a = case verbatimBody (opcName a) of
 
         ppOpr = case rates $ opcSignature a of
             Opr1    -> text $ "\\xs -> opr1 \""  ++ opcName a ++ "\" (head xs)"
-            Opr1k   -> text $ "\\xs -> opr1k \"" ++ opcName a ++ "\" (head xs)"  
+            Opr1k   -> text $ "\\xs -> opr1k \"" ++ opcName a ++ "\" (head xs)"
             InfOpr  -> text $ "\\xs -> infOpr \""  ++ opcName a ++ "\" (head xs) (head $ tail xs)"
 
         verbatimBody :: String -> Maybe Doc
@@ -329,7 +329,7 @@ opcDynamicBody a = case verbatimBody (opcName a) of
 -- pretty typed opcode
 
 prettyOpcTyped :: Opc -> Doc
-prettyOpcTyped a = vcat 
+prettyOpcTyped a = vcat
     [ pretty $ opcDoc a
     , hsFun (hsOpcName a) (opcTypedSignature a) (opcTypedBody a) ]
 
@@ -341,7 +341,7 @@ opcTypedBody a = case verbatimBody $ opcName a of
     Just res -> res
     Nothing | isConstant a -> hsep [cons, text "$ const", name]
     _ -> addArgs $ hsep [cons, name]
-    where 
+    where
         name = text $ qualifiedHsOpcName a
         cons = onMulti $ text $ firstLower $ show $ opcType a
         onMulti x = case opcType a of
@@ -350,7 +350,7 @@ opcTypedBody a = case verbatimBody $ opcName a of
             _           -> x
 
         -- assumption: one of the addSigOrDArgs or addMultiArgs
-        -- is always identity function. 
+        -- is always identity function.
         addArgs = addSigOrDArgs . addMultiArgs
 
         addSigOrDArgs = case outTypes $ types $ opcSignature a of
@@ -360,28 +360,28 @@ opcTypedBody a = case verbatimBody $ opcName a of
             where
                 args fun body = case inTypes $ types $ opcSignature a of
                     InTypes xs | length xs == 0 -> text fun <+> body
-                    InTypes xs                  -> 
+                    InTypes xs                  ->
                         let args = fmap ((char 'a' <> ) . int) [1 .. length xs]
                         in  hsep [char '\\' <> hsep args, text "->", text fun, body, hsep $ zipWith convertSigOrDs xs args]
                 convertSigOrDs ty arg = case ty of
                     SigOrD  -> parens $ text "toGE" <+> arg
-                    _       -> arg                                         
+                    _       -> arg
 
         addMultiArgs = case opcType a of
             PureMulti   -> args
             DirtyMulti  -> args
             _           -> id
-            where                
+            where
                 args = case inTypes $ types $ opcSignature a of
                     InTypes xs | length xs == 0 -> id
-                    InTypes xs                  -> 
+                    InTypes xs                  ->
                         let args = hsep $ fmap ((char 'a' <> ) . int) [1 .. length xs]
                         in  \x -> hsep [char '\\' <> args, text "->", x, args]
 
         verbatimBody = flip M.lookup verbatimTab
 
-        verbatimTab = fmap text $ M.fromList $ concat 
-            [ by seg 
+        verbatimTab = fmap text $ M.fromList $ concat
+            [ by seg
                     ["linseg", "linsegb", "expseg"
                     , "expsega"
                     , "expsegb", "cosseg", "cossegb" ]
@@ -390,12 +390,12 @@ opcTypedBody a = case verbatimBody $ opcName a of
                     ["transeg", "transegb"]
             , by seg2r ["transegr"]
             ]
-            where 
+            where
                 by f xs = zip xs (fmap f xs)
 
                 seg x = "kr . pureSingle D." ++ x ++ " . (\\xs -> xs ++ [1, last xs])"
                 seg2 x = "kr . pureSingle D." ++ x ++ " . (\\xs -> xs ++ [1, 0, last xs])"
-                
+
                 segr x = "\\xs dt rx -> kr $ pureSingle D." ++ x ++ " (xs ++ [1, last xs]) dt rx"
                 seg2r x = "\\xs dt rx -> kr $ pureSingle D." ++ x ++ " (xs ++ [1, 0, last xs]) dt rx"
 
@@ -405,7 +405,7 @@ opcTypedBody a = case verbatimBody $ opcName a of
 -- pretty primitives
 
 instance Pretty OpcDoc where
-    pretty a =  vcat $ text "-- | " : intersperse (text "--") [desc, signature, link] 
+    pretty a =  vcat $ text "-- | " : intersperse (text "--") [desc, signature, link]
         where
             formDesc f = vcat $ fmap ((text "--" <+>) . text) $ lines $ renderDoc 70 $ text $ f a
 
@@ -421,15 +421,15 @@ instance Pretty OpcDoc where
             longDesc    = formDesc opcDocLongDescription
 
             signature = vcat $ fmap ((text "-- >" <+>) . text) $  nestTail . lines =<< opcDocCode a
-                where                
+                where
                     nestTail xs = case xs of
                         []      -> []
                         [y]     -> [y]
                         y:ys    -> y : fmap ("    " ++ ) ys
 
             link = text "-- csound doc:" <+> text (inUrl $ fullPath $ opcDocLink a)
-                where 
-                    fullPath x = "http://www.csounds.com/manual/html/" ++ x
+                where
+                    fullPath x = x
                     inUrl x = "<" ++ x ++ ">"
 
 instance Pretty Rates where
@@ -447,7 +447,7 @@ instance Pretty RateList where
 
 instance Pretty Types where
     pretty a = hsep [pConstr (outTypes a), ins, pretty (outTypes a)]
-        where 
+        where
             pConstr x = case x of
                 OutTuple    -> text "Tuple a =>"
                 Tuple       -> text "Tuple a =>"
@@ -479,7 +479,7 @@ instance Pretty Rate where
 
 instance Pretty Type where
     pretty x = case x of
-        TypeList a  -> pretty [a]        
+        TypeList a  -> pretty [a]
         SigOrD      -> text nameSigOrD
         _           -> text $ show x
 
@@ -495,7 +495,7 @@ hsOpcName = resolveCollisions . toHsName . opcName
     where
         toHsName ('S' : 'T' : 'K' : rest) = "stk" ++ firstUpper rest
 
-        toHsName x 
+        toHsName x
             | isFirstUpper x = firstLower x
             | null pre  = x
             | null post = lowerPre
@@ -513,20 +513,20 @@ hsOpcName = resolveCollisions . toHsName . opcName
             | otherwise             = x
 
         specNames = ["in", "product", "sum", "max", "min", "print"]
-        
+
 
 
 --------------------------------------------------------------------
--- haskell syntax structures 
+-- haskell syntax structures
 
 hsHeader :: String -> [(String, [String])] -> Doc
-hsHeader name secs = text "module" <+> text name <+> nest 4 (parens 
+hsHeader name secs = text "module" <+> text name <+> nest 4 (parens
     (vCat (line : (punctuate comma $ fmap (uncurry fromSec) secs)))) <+> text "where"
     where
-        fromSec title funs = vcat 
-            [ if null title then empty else text "-- *" <+> text title 
+        fromSec title funs = vcat
+            [ if null title then empty else text "-- *" <+> text title
             , hsep $ punctuate comma $ fmap text funs ]
-    
+
 hsImports :: [Import] -> Doc
 hsImports as = vcat $ fmap pretty as
 
@@ -536,7 +536,7 @@ instance Pretty Import where
         QualifiedImport name alias  -> text "import qualified" <+> text name <+> text "as" <+> text alias
 
 hsFun :: String -> Doc -> Doc -> Doc
-hsFun name ty body = vcat [hsDef name ty, hsConst name body] 
+hsFun name ty body = vcat [hsDef name ty, hsConst name body]
 
 hsDef :: String -> Doc -> Doc
 hsDef name ty = text name <+> text "::" <+> ty
