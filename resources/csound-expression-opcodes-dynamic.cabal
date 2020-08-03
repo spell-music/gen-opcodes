@@ -23,6 +23,6 @@ Source-repository head
 Library
   Ghc-Options:    -Wall
   Build-Depends:
-        base >= 4, base < 5, csound-expression-dynamic
+        base >= 4, base < 5, csound-expression-dynamic >= 0.3.5
   Hs-Source-Dirs:      src/
   Exposed-Modules:
