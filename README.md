@@ -1,6 +1,8 @@
 gen-opcodes
 ===========
 
+The repo is archived and moved to monorepo [csound-expression](https://github.com/spell-music/csound-expression)
+
 generates the opcodes for csound-expression lib
 
 It contains three utilities:
